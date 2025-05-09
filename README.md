@@ -2,6 +2,28 @@
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
+## Development Environment / 開発環境
+
+- Node.js: 14.x or higher / 14.x 以上
+- npm: 6.x or higher / 6.x 以上
+- Tailwind CSS: v3.x
+- IDE: Visual Studio Code (recommended) / Visual Studio Code (推奨)
+- Development server: Start with `npm start` / 開発用サーバーは `npm start` で起動可能
+
+## System Requirements / 動作環境
+
+- Node.js: 14.x or higher / 14.x 以上
+- npm: 6.x or higher / 6.x 以上
+- OS: Windows, macOS, or Linux / Windows, macOS, または Linux
+
+## Runtime Environment / 実行環境
+
+- Tailwind CSS: v3.x  
+  **Note:** Tailwind CSS v3.x is used in this project. Behavior may differ from v4.x.  
+  **注意:** このプロジェクトでは Tailwind CSS v3.x を使用しています。v4.x とは挙動が異なる場合があります。
+- React: 17.x or higher
+- Other dependencies: See `package.json` for details / その他の依存関係は `package.json` を参照してください。
+
 ## Available Scripts
 
 In the project directory, you can run:
@@ -44,27 +66,3 @@ You don't have to ever use `eject`. The curated feature set is suitable for smal
 You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
 
 To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
