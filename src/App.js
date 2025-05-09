@@ -166,7 +166,7 @@ export default function App() {
             <li className="flex items-center space-x-2 font-bold border-b pb-1 mb-1">
               <span className="w-6">✔</span>
               <span className="w-20">緊急度</span>
-              <span className="flex-1">件名</span>
+              <span className="w-1/3">件名</span>
               <span className="w-32">仮期日</span>
               <span className="w-32">最終期日</span>
             </li>
@@ -205,16 +205,36 @@ export default function App() {
                     setTasks([...tasks]);
                     setUnsaved(true);
                   }}
-                  className="border p-1 flex-1"
+                  className={`border p-1 w-1/3 ${
+                    task.緊急度 === "高"
+                      ? "text-red-600"
+                      : task.緊急度 === "低"
+                      ? "text-blue-600"
+                      : "text-black"
+                  }`}
                 />
                 {/* 仮期日 */}
-                <span className="w-32 text-gray-600">
-                  {task.仮期日 ? format(parseISO(task.仮期日), "yyyy-MM-dd HH:mm") : "未設定"}
-                </span>
+                <input
+                  type="datetime-local"
+                  value={task.仮期日 || ""}
+                  onChange={(e) => {
+                    task.仮期日 = e.target.value;
+                    setTasks([...tasks]);
+                    setUnsaved(true);
+                  }}
+                  className="w-32 border p-1"
+                />
                 {/* 最終期日 */}
-                <span className="w-32 text-gray-600">
-                  {task.最終期日 ? format(parseISO(task.最終期日), "yyyy-MM-dd HH:mm") : "未設定"}
-                </span>
+                <input
+                  type="datetime-local"
+                  value={task.最終期日 || ""}
+                  onChange={(e) => {
+                    task.最終期日 = e.target.value;
+                    setTasks([...tasks]);
+                    setUnsaved(true);
+                  }}
+                  className="w-32 border p-1"
+                />
               </li>
             ))}
           </ul>
