@@ -41,18 +41,22 @@ export default function App() {
     const updatedTasks = [];
     const toDelete = [];
     for (const t of tasks) {
-      const due = parseISO(t.最終期日);
-      if (!t.完了 && isBefore(due, addDays(now, -1))) {
-        toDelete.push(t);
+      if (t.最終期日) {
+        const due = parseISO(t.最終期日);
+        if (!t.完了 && isBefore(due, addDays(now, -1))) {
+          toDelete.push(t);
+        } else {
+          updatedTasks.push(t);
+        }
       } else {
-        updatedTasks.push(t);
+        updatedTasks.push(t); // 最終期日がないタスクは削除対象にしない
       }
     }
     if (toDelete.length > 0) {
       setDeletedTasks((prev) => [...prev, ...toDelete]);
       setTasks(updatedTasks);
     }
-  }, []);
+  }, [tasks]);
 
   useEffect(() => {
     const handleBeforeUnload = (e) => {
@@ -113,7 +117,13 @@ export default function App() {
     if (diffP !== 0) return diffP;
     return new Date(a.最終期日 || 0) - new Date(b.最終期日 || 0);
   });
-  const alerts = tasks.filter((t) => differenceInDays(parseISO(t.仮期日 || new Date()), new Date()) <= 7 && !t.完了);
+  const alerts = tasks.filter((t) => {
+    if (t.仮期日) {
+      const 仮期日 = parseISO(t.仮期日);
+      return differenceInDays(仮期日, new Date()) <= 7 && !t.完了;
+    }
+    return false;
+  });
 
   return (
     <div style={DEFAULT_POSITION}>
