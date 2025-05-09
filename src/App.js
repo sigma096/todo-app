@@ -162,27 +162,59 @@ export default function App() {
           </ul>
         ) : (
           <ul className="text-sm border rounded p-2 bg-white shadow-inner min-h-[100px]">
+            {/* 項目名をリスト最上部に追加 */}
+            <li className="flex items-center space-x-2 font-bold border-b pb-1 mb-1">
+              <span className="w-6">✔</span>
+              <span className="w-20">緊急度</span>
+              <span className="flex-1">件名</span>
+              <span className="w-32">仮期日</span>
+              <span className="w-32">最終期日</span>
+            </li>
             {sorted.map((task, i) => (
-              <li key={i} className={`flex items-center space-x-2 ${PRIORITY_COLORS[task.緊急度]}`}>
-                <input type="checkbox" checked={task.完了} onChange={() => {
-                  task.完了 = !task.完了;
-                  setTasks([...tasks]);
-                  setUnsaved(true);
-                }} />
-                <input value={task.件名} onChange={(e) => {
-                  task.件名 = e.target.value;
-                  setTasks([...tasks]);
-                  setUnsaved(true);
-                }} className="border p-1 flex-1" />
-                <select value={task.緊急度} onChange={(e) => {
-                  task.緊急度 = e.target.value;
-                  setTasks([...tasks]);
-                  setUnsaved(true);
-                }} className="border p-1">
+              <li key={i} className="flex items-center space-x-2">
+                {/* チェックボックス */}
+                <input
+                  type="checkbox"
+                  checked={task.完了}
+                  onChange={() => {
+                    task.完了 = !task.完了;
+                    setTasks([...tasks]);
+                    setUnsaved(true);
+                  }}
+                  className="w-6"
+                />
+                {/* 緊急度 */}
+                <select
+                  value={task.緊急度}
+                  onChange={(e) => {
+                    task.緊急度 = e.target.value;
+                    setTasks([...tasks]);
+                    setUnsaved(true);
+                  }}
+                  className="w-20 border p-1"
+                >
                   <option value="未指定">未指定</option>
                   <option value="高">高</option>
                   <option value="低">低</option>
                 </select>
+                {/* 件名 */}
+                <input
+                  value={task.件名}
+                  onChange={(e) => {
+                    task.件名 = e.target.value;
+                    setTasks([...tasks]);
+                    setUnsaved(true);
+                  }}
+                  className="border p-1 flex-1"
+                />
+                {/* 仮期日 */}
+                <span className="w-32 text-gray-600">
+                  {task.仮期日 ? format(parseISO(task.仮期日), "yyyy-MM-dd HH:mm") : "未設定"}
+                </span>
+                {/* 最終期日 */}
+                <span className="w-32 text-gray-600">
+                  {task.最終期日 ? format(parseISO(task.最終期日), "yyyy-MM-dd HH:mm") : "未設定"}
+                </span>
               </li>
             ))}
           </ul>
