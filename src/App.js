@@ -5,6 +5,8 @@ import React, { useState, useEffect } from "react";
 import { format, addDays, isBefore, parseISO, differenceInDays } from "date-fns";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
 
 const PRIORITY_COLORS = {
   高: "text-red-600",
@@ -18,6 +20,12 @@ const DEFAULT_POSITION = {
   minHeight: "100vh",
   backgroundColor: "#f9f9f9",
 };
+
+// ドロップダウン用の月・日・時・分リスト生成
+const months = Array.from({ length: 12 }, (_, i) => i + 1);
+const daysInMonth = (year, month) => new Date(year, month, 0).getDate();
+const hours = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, "0"));
+const minutes = Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, "0"));
 
 export default function App() {
   const [tasks, setTasks] = useState([]);
@@ -35,6 +43,8 @@ export default function App() {
   });
   const [unsaved, setUnsaved] = useState(false);
   const [error, setError] = useState("");
+  const today = new Date();
+  const [calendarOpen, setCalendarOpen] = useState({ 仮期日: false, 最終期日: false });
 
   useEffect(() => {
     const now = new Date();
@@ -69,20 +79,46 @@ export default function App() {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [unsaved]);
 
+  // 日付・時刻入力補助関数
+  const getDateParts = (dateStr) => {
+    if (!dateStr) return { year: today.getFullYear(), month: today.getMonth() + 1, day: today.getDate(), hour: "", minute: "" };
+    const [date, time] = dateStr.split("T");
+    const [year, month, day] = date.split("-").map(Number);
+    let hour = "", minute = "";
+    if (time) [hour, minute] = time.split(":");
+    return { year, month, day, hour, minute };
+  };
+
+  // 日付・時刻バリデーション
+  const isPast = (y, m, d, h, min) => {
+    const input = new Date(y, m - 1, d, h || 0, min || 0);
+    return input < new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  };
+
   const handleAddTask = () => {
     if (!newTask.件名.trim()) return;
     const now = new Date();
-    if (newTask.仮期日 && newTask.最終期日) {
-      const 仮 = new Date(newTask.仮期日);
-      const 最終 = new Date(newTask.最終期日);
-      if (仮 > 最終) {
-        setError("仮期日は最終期日より前に設定してください。");
-        return;
-      }
-      if (仮 < now || 最終 < now) {
-        setError("仮期日・最終期日には過去の日付を設定できません。");
-        return;
-      }
+    const getDateObj = (str) => {
+      if (!str) return null;
+      const [date, time] = str.split("T");
+      const [y, m, d] = date.split("-").map(Number);
+      let h = 0, min = 0;
+      if (time) [h, min] = time.split(":").map(Number);
+      return new Date(y, m - 1, d, h, min);
+    };
+    const 仮 = getDateObj(newTask.仮期日);
+    const 最終 = getDateObj(newTask.最終期日);
+    if (仮 && 仮 < new Date(today.getFullYear(), today.getMonth(), today.getDate())) {
+      setError("仮期日は本日以降の日付を指定してください。");
+      return;
+    }
+    if (最終 && 最終 < new Date(today.getFullYear(), today.getMonth(), today.getDate())) {
+      setError("最終期日は本日以降の日付を指定してください。");
+      return;
+    }
+    if (仮 && 最終 && 仮 > 最終) {
+      setError("仮期日は最終期日より前に設定してください。");
+      return;
     }
     setTasks((prev) => [...prev, newTask]);
     setShowModal(false);
@@ -249,19 +285,250 @@ export default function App() {
 
         {showModal && (
           <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center" onClick={() => setShowModal(false)}>
-            <div className="bg-white p-4 rounded shadow w-80" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-white p-4 rounded shadow w-96" onClick={e => e.stopPropagation()}>
               <div className="flex justify-between items-center mb-2">
                 <h2 className="text-lg">タスク追加</h2>
                 <button onClick={() => setShowModal(false)} className="text-gray-500">✕</button>
               </div>
-              <input placeholder="件名" value={newTask.件名} onChange={(e) => setNewTask({ ...newTask, 件名: e.target.value })} className="w-full border mb-2 p-1" />
-              <label className="block mb-1">仮期日:
-                <input type="datetime-local" value={newTask.仮期日} onChange={(e) => setNewTask({ ...newTask, 仮期日: e.target.value })} className="w-full border p-1" />
-              </label>
-              <label className="block mb-1">最終期日:
-                <input type="datetime-local" value={newTask.最終期日} onChange={(e) => setNewTask({ ...newTask, 最終期日: e.target.value })} className="w-full border p-1" />
-              </label>
+              <input
+                placeholder="件名"
+                value={newTask.件名}
+                onChange={e => setNewTask({ ...newTask, 件名: e.target.value })}
+                className="w-full border mb-2 p-1"
+              />
+
+              {/* エラー表示 */}
               {error && <p className="text-red-600 text-sm mb-1">{error}</p>}
+
+              {/* 仮期日入力 */}
+              <label className="block mb-1">仮期日:
+                <div className="flex items-center space-x-2">
+                  <div className="relative">
+                    <button
+                      type="button"
+                      className="border px-2 py-1 bg-white mr-2"
+                      onClick={() =>
+                        setCalendarOpen(prev => ({
+                          仮期日: !prev.仮期日,
+                          最終期日: false // もう一方を閉じる
+                        }))
+                      }
+                    >📅</button>
+                    {/* --- モーダル内の仮期日カレンダー --- */}
+                    {calendarOpen.仮期日 && (
+                      <div className="absolute z-20 left-0 mt-2">
+                        <DatePicker
+                          inline
+                          selected={getDateObj(newTask.仮期日) || today}
+                          onChange={date => {
+                            setNewTask({
+                              ...newTask,
+                              仮期日: toDateStr(date)
+                            });
+                            setCalendarOpen(prev => ({ ...prev, 仮期日: false }));
+                          }}
+                          minDate={today}
+                          shouldCloseOnSelect={true}
+                          onClickOutside={() => setCalendarOpen(prev => ({ ...prev, 仮期日: false }))}
+                        />
+                      </div>
+                    )}
+                  </div>
+                  {/* 年/月/日/時/分ドロップダウン */}
+                  <div className="flex items-center space-x-1 ml-2">
+                    <select
+                      value={getDateParts(newTask.仮期日).year}
+                      onChange={e => {
+                        const { month, day, hour, minute } = getDateParts(newTask.仮期日);
+                        setNewTask({
+                          ...newTask,
+                          仮期日: toDateStr(new Date(Number(e.target.value), month - 1, day), hour, minute)
+                        });
+                      }}
+                      className="border p-1"
+                    >
+                      {Array.from({ length: 4 }, (_, i) => today.getFullYear() + i).map(y => <option key={y} value={y}>{y}</option>)}
+                    </select>
+                    <span className="mx-0.5">/</span>
+                    <select
+                      value={getDateParts(newTask.仮期日).month}
+                      onChange={e => {
+                        const { year, day, hour, minute } = getDateParts(newTask.仮期日);
+                        setNewTask({
+                          ...newTask,
+                          仮期日: toDateStr(new Date(year, Number(e.target.value) - 1, day), hour, minute)
+                        });
+                      }}
+                      className="border p-1"
+                    >
+                      {months.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                    <span className="mx-0.5">/</span>
+                    <select
+                      value={getDateParts(newTask.仮期日).day}
+                      onChange={e => {
+                        const { year, month, hour, minute } = getDateParts(newTask.仮期日);
+                        setNewTask({
+                          ...newTask,
+                          仮期日: toDateStr(new Date(year, month - 1, Number(e.target.value)), hour, minute)
+                        });
+                      }}
+                      className="border p-1"
+                    >
+                      {Array.from({ length: daysInMonth(getDateParts(newTask.仮期日).year, getDateParts(newTask.仮期日).month) }, (_, i) => i + 1).map(d => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                    </select>
+                    {/* 日と時間の間を広く（4倍） */}
+                    <span className="mx-16"></span>
+                    <select
+                      value={getDateParts(newTask.仮期日).hour}
+                      onChange={e => {
+                        const { year, month, day, minute } = getDateParts(newTask.仮期日);
+                        setNewTask({
+                          ...newTask,
+                          仮期日: toDateStr(new Date(year, month - 1, day), e.target.value, minute)
+                        });
+                      }}
+                      className="border p-1"
+                    >
+                      <option value="">--</option>
+                      {hours.map(h => <option key={h} value={h}>{h}</option>)}
+                    </select>
+                    <span className="mx-0.5">:</span>
+                    <select
+                      value={getDateParts(newTask.仮期日).minute}
+                      onChange={e => {
+                        const { year, month, day, hour } = getDateParts(newTask.仮期日);
+                        setNewTask({
+                          ...newTask,
+                          仮期日: toDateStr(new Date(year, month - 1, day), hour, e.target.value)
+                        });
+                      }}
+                      className="border p-1"
+                      disabled={!getDateParts(newTask.仮期日).hour}
+                    >
+                      <option value="">--</option>
+                      {minutes.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </label>
+
+              {/* 最終期日入力（仮期日と同様に修正） */}
+              <label className="block mb-1 mt-2">最終期日:
+                <div className="flex items-center space-x-2">
+                  <div className="relative">
+                    <button
+                      type="button"
+                      className="border px-2 py-1 bg-white mr-2"
+                      onClick={() =>
+                        setCalendarOpen(prev => ({
+                          仮期日: false, // もう一方を閉じる
+                          最終期日: !prev.最終期日
+                        }))
+                      }
+                    >📅</button>
+                    {/* --- モーダル内の最終期日カレンダー --- */}
+                    {calendarOpen.最終期日 && (
+                      <div className="absolute z-20 left-0 mt-2">
+                        <DatePicker
+                          inline
+                          selected={getDateObj(newTask.最終期日) || today}
+                          onChange={date => {
+                            setNewTask({
+                              ...newTask,
+                              最終期日: toDateStr(date)
+                            });
+                            setCalendarOpen(prev => ({ ...prev, 最終期日: false }));
+                          }}
+                          minDate={today}
+                          shouldCloseOnSelect={true}
+                          onClickOutside={() => setCalendarOpen(prev => ({ ...prev, 最終期日: false }))}
+                        />
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center space-x-1 ml-2">
+                    <select
+                      value={getDateParts(newTask.最終期日).year}
+                      onChange={e => {
+                        const { month, day, hour, minute } = getDateParts(newTask.最終期日);
+                        setNewTask({
+                          ...newTask,
+                          最終期日: toDateStr(new Date(Number(e.target.value), month - 1, day), hour, minute)
+                        });
+                      }}
+                      className="border p-1"
+                    >
+                      {Array.from({ length: 4 }, (_, i) => today.getFullYear() + i).map(y => <option key={y} value={y}>{y}</option>)}
+                    </select>
+                    <span className="mx-0.5">/</span>
+                    <select
+                      value={getDateParts(newTask.最終期日).month}
+                      onChange={e => {
+                        const { year, day, hour, minute } = getDateParts(newTask.最終期日);
+                        setNewTask({
+                          ...newTask,
+                          最終期日: toDateStr(new Date(year, Number(e.target.value) - 1, day), hour, minute)
+                        });
+                      }}
+                      className="border p-1"
+                    >
+                      {months.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                    <span className="mx-0.5">/</span>
+                    <select
+                      value={getDateParts(newTask.最終期日).day}
+                      onChange={e => {
+                        const { year, month, hour, minute } = getDateParts(newTask.最終期日);
+                        setNewTask({
+                          ...newTask,
+                          最終期日: toDateStr(new Date(year, month - 1, Number(e.target.value)), hour, minute)
+                        });
+                      }}
+                      className="border p-1"
+                    >
+                      {Array.from({ length: daysInMonth(getDateParts(newTask.最終期日).year, getDateParts(newTask.最終期日).month) }, (_, i) => i + 1).map(d => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                    </select>
+                    <span className="mx-16"></span>
+                    <select
+                      value={getDateParts(newTask.最終期日).hour}
+                      onChange={e => {
+                        const { year, month, day, minute } = getDateParts(newTask.最終期日);
+                        setNewTask({
+                          ...newTask,
+                          最終期日: toDateStr(new Date(year, month - 1, day), e.target.value, minute)
+                        });
+                      }}
+                      className="border p-1"
+                    >
+                      <option value="">--</option>
+                      {hours.map(h => <option key={h} value={h}>{h}</option>)}
+                    </select>
+                    <span className="mx-0.5">:</span>
+                    <select
+                      value={getDateParts(newTask.最終期日).minute}
+                      onChange={e => {
+                        const { year, month, day, hour } = getDateParts(newTask.最終期日);
+                        setNewTask({
+                          ...newTask,
+                          最終期日: toDateStr(new Date(year, month - 1, day), hour, e.target.value)
+                        });
+                      }}
+                      className="border p-1"
+                      disabled={!getDateParts(newTask.最終期日).hour}
+                    >
+                      <option value="">--</option>
+                      {minutes.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </label>
+
+              {/* 緊急度・分類・ボタンはそのまま */}
               <label className="block mb-1">緊急度:
                 <select value={newTask.緊急度} onChange={(e) => setNewTask({ ...newTask, 緊急度: e.target.value })} className="w-full border p-1">
                   <option value="未指定">未指定</option>
@@ -277,7 +544,37 @@ export default function App() {
               </label>
               <div className="flex justify-end space-x-2">
                 <button onClick={() => setShowModal(false)} className="px-2 py-1 border">キャンセル</button>
-                <button onClick={handleAddTask} className="px-2 py-1 bg-blue-500 text-white">追加</button>
+                <button
+                  onClick={() => {
+                    // バリデーション
+                    const now = new Date();
+                    const 仮 = getDateObj(newTask.仮期日);
+                    const 最終 = getDateObj(newTask.最終期日);
+
+                    if (!newTask.件名.trim()) {
+                      setError("件名が未入力です");
+                      return;
+                    }
+                    // 仮期日が指定されていて、日付が今日より前ならエラー
+                    if (仮 && 仮.setHours(0,0,0,0) < today.setHours(0,0,0,0)) {
+                      setError("仮期日は本日以降の日付を指定してください。");
+                      return;
+                    }
+                    // 最終期日が指定されていて、日付が今日より前ならエラー
+                    if (最終 && 最終.setHours(0,0,0,0) < today.setHours(0,0,0,0)) {
+                      setError("最終期日は本日以降の日付を指定してください。");
+                      return;
+                    }
+                    // 仮期日・最終期日ともに指定されていて、最終期日が仮期日より前ならエラー
+                    if (仮 && 最終 && 最終 < 仮) {
+                      setError("最終期日は仮期日より後の日時を指定してください。");
+                      return;
+                    }
+                    setError("");
+                    handleAddTask();
+                  }}
+                  className="px-2 py-1 bg-blue-500 text-white"
+                >追加</button>
               </div>
             </div>
           </div>
@@ -285,4 +582,26 @@ export default function App() {
       </div>
     </div>
   );
+}
+
+// 日付文字列→Dateオブジェクト
+function getDateObj(str) {
+  if (!str) return null;
+  const [date, time] = str.split("T");
+  const [y, m, d] = date.split("-").map(Number);
+  let h = 0, min = 0;
+  if (time) [h, min] = time.split(":").map(Number);
+  return new Date(y, m - 1, d, h, min);
+}
+
+// Dateオブジェクト→日付文字列
+function toDateStr(date, hour, minute) {
+  if (!date) return "";
+  const y = date.getFullYear();
+  const m = (date.getMonth() + 1).toString().padStart(2, "0");
+  const d = date.getDate().toString().padStart(2, "0");
+  if (hour) {
+    return `${y}-${m}-${d}T${hour}:${minute || "00"}`;
+  }
+  return `${y}-${m}-${d}`;
 }
