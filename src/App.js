@@ -46,6 +46,22 @@ export default function App() {
   const today = new Date();
   const [calendarOpen, setCalendarOpen] = useState({ 仮期日: false, 最終期日: false });
 
+  // エラーポップアップ用ステート
+  const [listError, setListError] = useState("");
+  const [listErrorOpen, setListErrorOpen] = useState(false);
+  const [calendarOpenList, setCalendarOpenList] = useState({}); // {仮期日0: true, 最終期日1: true ...}
+
+  // タスクのバリデーション
+  const validateTask = (task, tasks, idx) => {
+    if (!task.件名.trim()) return "件名が未入力です";
+    const 仮 = getDateObj(task.仮期日);
+    const 最終 = getDateObj(task.最終期日);
+    if (仮 && 仮.setHours(0,0,0,0) < today.setHours(0,0,0,0)) return "仮期日は本日以降の日付を指定してください。";
+    if (最終 && 最終.setHours(0,0,0,0) < today.setHours(0,0,0,0)) return "最終期日は本日以降の日付を指定してください。";
+    if (仮 && 最終 && 最終 < 仮) return "最終期日は仮期日より後の日時を指定してください。";
+    return "";
+  };
+
   useEffect(() => {
     const now = new Date();
     const updatedTasks = [];
@@ -198,7 +214,7 @@ export default function App() {
           </ul>
         ) : (
           <ul className="text-sm border rounded p-2 bg-white shadow-inner min-h-[100px]">
-            {/* 項目名をリスト最上部に追加 */}
+            {/* 項目名 */}
             <li className="flex items-center space-x-2 font-bold border-b pb-1 mb-1">
               <span className="w-6">✔</span>
               <span className="w-20">緊急度</span>
@@ -237,40 +253,314 @@ export default function App() {
                 <input
                   value={task.件名}
                   onChange={(e) => {
-                    task.件名 = e.target.value;
-                    setTasks([...tasks]);
+                    const newTasks = [...tasks];
+                    newTasks[i].件名 = e.target.value;
+                    const err = validateTask(newTasks[i], newTasks, i);
+                    if (err) {
+                      setListError(err);
+                      setListErrorOpen(true);
+                      return;
+                    }
+                    setTasks(newTasks);
                     setUnsaved(true);
                   }}
-                  className={`border p-1 w-1/3 ${
-                    task.緊急度 === "高"
-                      ? "text-red-600"
-                      : task.緊急度 === "低"
-                      ? "text-blue-600"
-                      : "text-black"
+                  className={`border p-1 w-1/3 ${task.緊急度 === "高"
+                    ? "text-red-600"
+                    : task.緊急度 === "低"
+                    ? "text-blue-600"
+                    : "text-black"
                   }`}
                 />
                 {/* 仮期日 */}
-                <input
-                  type="datetime-local"
-                  value={task.仮期日 || ""}
-                  onChange={(e) => {
-                    task.仮期日 = e.target.value;
-                    setTasks([...tasks]);
-                    setUnsaved(true);
-                  }}
-                  className="w-32 border p-1"
-                />
+                <div className="flex items-center w-32 relative">
+                  <button
+                    type="button"
+                    className="border px-1 py-1 bg-white mr-1"
+                    onClick={() =>
+                      setCalendarOpenList(prev => ({
+                        ...prev,
+                        [`仮期日${i}`]: !prev[`仮期日${i}`],
+                        [`最終期日${i}`]: false
+                      }))
+                    }
+                  >📅</button>
+                  {calendarOpenList[`仮期日${i}`] && (
+                    <div className="absolute z-20 left-0 mt-7">
+                      <DatePicker
+                        inline
+                        selected={getDateObj(task.仮期日) || today}
+                        onChange={date => {
+                          const newTasks = [...tasks];
+                          newTasks[i].仮期日 = toDateStr(date);
+                          const err = validateTask(newTasks[i], newTasks, i);
+                          if (err) {
+                            setListError(err);
+                            setListErrorOpen(true);
+                            return;
+                          }
+                          setTasks(newTasks);
+                          setUnsaved(true);
+                          setCalendarOpenList(prev => ({ ...prev, [`仮期日${i}`]: false }));
+                        }}
+                        minDate={today}
+                        shouldCloseOnSelect={true}
+                        onClickOutside={() => setCalendarOpenList(prev => ({ ...prev, [`仮期日${i}`]: false }))}
+                      />
+                    </div>
+                  )}
+                  {/* 年/月/日/時/分ドロップダウン */}
+                  <div className="flex items-center space-x-1">
+                    <select
+                      value={getDateParts(task.仮期日).year}
+                      onChange={e => {
+                        const { month, day, hour, minute } = getDateParts(task.仮期日);
+                        const newTasks = [...tasks];
+                        newTasks[i].仮期日 = toDateStr(new Date(Number(e.target.value), month - 1, day), hour, minute);
+                        const err = validateTask(newTasks[i], newTasks, i);
+                        if (err) {
+                          setListError(err);
+                          setListErrorOpen(true);
+                          return;
+                        }
+                        setTasks(newTasks);
+                        setUnsaved(true);
+                      }}
+                      className="border p-1"
+                    >
+                      {Array.from({ length: 4 }, (_, j) => today.getFullYear() + j).map(y => <option key={y} value={y}>{y}</option>)}
+                    </select>
+                    <span className="mx-0.5">/</span>
+                    <select
+                      value={getDateParts(task.仮期日).month}
+                      onChange={e => {
+                        const { year, day, hour, minute } = getDateParts(task.仮期日);
+                        const newTasks = [...tasks];
+                        newTasks[i].仮期日 = toDateStr(new Date(year, Number(e.target.value) - 1, day), hour, minute);
+                        const err = validateTask(newTasks[i], newTasks, i);
+                        if (err) {
+                          setListError(err);
+                          setListErrorOpen(true);
+                          return;
+                        }
+                        setTasks(newTasks);
+                        setUnsaved(true);
+                      }}
+                      className="border p-1"
+                    >
+                      {months.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                    <span className="mx-0.5">/</span>
+                    <select
+                      value={getDateParts(task.仮期日).day}
+                      onChange={e => {
+                        const { year, month, hour, minute } = getDateParts(task.仮期日);
+                        const newTasks = [...tasks];
+                        newTasks[i].仮期日 = toDateStr(new Date(year, month - 1, Number(e.target.value)), hour, minute);
+                        const err = validateTask(newTasks[i], newTasks, i);
+                        if (err) {
+                          setListError(err);
+                          setListErrorOpen(true);
+                          return;
+                        }
+                        setTasks(newTasks);
+                        setUnsaved(true);
+                      }}
+                      className="border p-1"
+                    >
+                      {Array.from({ length: daysInMonth(getDateParts(task.仮期日).year, getDateParts(task.仮期日).month) }, (_, j) => j + 1).map(d => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                    </select>
+                    <span className="mx-4"></span>
+                    <select
+                      value={getDateParts(task.仮期日).hour}
+                      onChange={e => {
+                        const { year, month, day, minute } = getDateParts(task.仮期日);
+                        const newTasks = [...tasks];
+                        newTasks[i].仮期日 = toDateStr(new Date(year, month - 1, day), e.target.value, minute);
+                        const err = validateTask(newTasks[i], newTasks, i);
+                        if (err) {
+                          setListError(err);
+                          setListErrorOpen(true);
+                          return;
+                        }
+                        setTasks(newTasks);
+                        setUnsaved(true);
+                      }}
+                      className="border p-1"
+                    >
+                      <option value="">--</option>
+                      {hours.map(h => <option key={h} value={h}>{h}</option>)}
+                    </select>
+                    <span className="mx-0.5">:</span>
+                    <select
+                      value={getDateParts(task.仮期日).minute}
+                      onChange={e => {
+                        const { year, month, day, hour } = getDateParts(task.仮期日);
+                        const newTasks = [...tasks];
+                        newTasks[i].仮期日 = toDateStr(new Date(year, month - 1, day), hour, e.target.value);
+                        const err = validateTask(newTasks[i], newTasks, i);
+                        if (err) {
+                          setListError(err);
+                          setListErrorOpen(true);
+                          return;
+                        }
+                        setTasks(newTasks);
+                        setUnsaved(true);
+                      }}
+                      className="border p-1"
+                      disabled={!getDateParts(task.仮期日).hour}
+                    >
+                      <option value="">--</option>
+                      {minutes.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </div>
+                </div>
                 {/* 最終期日 */}
-                <input
-                  type="datetime-local"
-                  value={task.最終期日 || ""}
-                  onChange={(e) => {
-                    task.最終期日 = e.target.value;
-                    setTasks([...tasks]);
-                    setUnsaved(true);
-                  }}
-                  className="w-32 border p-1"
-                />
+                <div className="flex items-center w-32 relative">
+                  <button
+                    type="button"
+                    className="border px-1 py-1 bg-white mr-1"
+                    onClick={() =>
+                      setCalendarOpenList(prev => ({
+                        ...prev,
+                        [`最終期日${i}`]: !prev[`最終期日${i}`],
+                        [`仮期日${i}`]: false
+                      }))
+                    }
+                  >📅</button>
+                  {calendarOpenList[`最終期日${i}`] && (
+                    <div className="absolute z-20 left-0 mt-7">
+                      <DatePicker
+                        inline
+                        selected={getDateObj(task.最終期日) || today}
+                        onChange={date => {
+                          const newTasks = [...tasks];
+                          newTasks[i].最終期日 = toDateStr(date);
+                          const err = validateTask(newTasks[i], newTasks, i);
+                          if (err) {
+                            setListError(err);
+                            setListErrorOpen(true);
+                            return;
+                          }
+                          setTasks(newTasks);
+                          setUnsaved(true);
+                          setCalendarOpenList(prev => ({ ...prev, [`最終期日${i}`]: false }));
+                        }}
+                        minDate={today}
+                        shouldCloseOnSelect={true}
+                        onClickOutside={() => setCalendarOpenList(prev => ({ ...prev, [`最終期日${i}`]: false }))}
+                      />
+                    </div>
+                  )}
+                  {/* 年/月/日/時/分ドロップダウン */}
+                  <div className="flex items-center space-x-1">
+                    <select
+                      value={getDateParts(task.最終期日).year}
+                      onChange={e => {
+                        const { month, day, hour, minute } = getDateParts(task.最終期日);
+                        const newTasks = [...tasks];
+                        newTasks[i].最終期日 = toDateStr(new Date(Number(e.target.value), month - 1, day), hour, minute);
+                        const err = validateTask(newTasks[i], newTasks, i);
+                        if (err) {
+                          setListError(err);
+                          setListErrorOpen(true);
+                          return;
+                        }
+                        setTasks(newTasks);
+                        setUnsaved(true);
+                      }}
+                      className="border p-1"
+                    >
+                      {Array.from({ length: 4 }, (_, j) => today.getFullYear() + j).map(y => <option key={y} value={y}>{y}</option>)}
+                    </select>
+                    <span className="mx-0.5">/</span>
+                    <select
+                      value={getDateParts(task.最終期日).month}
+                      onChange={e => {
+                        const { year, day, hour, minute } = getDateParts(task.最終期日);
+                        const newTasks = [...tasks];
+                        newTasks[i].最終期日 = toDateStr(new Date(year, Number(e.target.value) - 1, day), hour, minute);
+                        const err = validateTask(newTasks[i], newTasks, i);
+                        if (err) {
+                          setListError(err);
+                          setListErrorOpen(true);
+                          return;
+                        }
+                        setTasks(newTasks);
+                        setUnsaved(true);
+                      }}
+                      className="border p-1"
+                    >
+                      {months.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                    <span className="mx-0.5">/</span>
+                    <select
+                      value={getDateParts(task.最終期日).day}
+                      onChange={e => {
+                        const { year, month, hour, minute } = getDateParts(task.最終期日);
+                        const newTasks = [...tasks];
+                        newTasks[i].最終期日 = toDateStr(new Date(year, month - 1, Number(e.target.value)), hour, minute);
+                        const err = validateTask(newTasks[i], newTasks, i);
+                        if (err) {
+                          setListError(err);
+                          setListErrorOpen(true);
+                          return;
+                        }
+                        setTasks(newTasks);
+                        setUnsaved(true);
+                      }}
+                      className="border p-1"
+                    >
+                      {Array.from({ length: daysInMonth(getDateParts(task.最終期日).year, getDateParts(task.最終期日).month) }, (_, j) => j + 1).map(d => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                    </select>
+                    <span className="mx-4"></span>
+                    <select
+                      value={getDateParts(task.最終期日).hour}
+                      onChange={e => {
+                        const { year, month, day, minute } = getDateParts(task.最終期日);
+                        const newTasks = [...tasks];
+                        newTasks[i].最終期日 = toDateStr(new Date(year, month - 1, day), e.target.value, minute);
+                        const err = validateTask(newTasks[i], newTasks, i);
+                        if (err) {
+                          setListError(err);
+                          setListErrorOpen(true);
+                          return;
+                        }
+                        setTasks(newTasks);
+                        setUnsaved(true);
+                      }}
+                      className="border p-1"
+                    >
+                      <option value="">--</option>
+                      {hours.map(h => <option key={h} value={h}>{h}</option>)}
+                    </select>
+                    <span className="mx-0.5">:</span>
+                    <select
+                      value={getDateParts(task.最終期日).minute}
+                      onChange={e => {
+                        const { year, month, day, hour } = getDateParts(task.最終期日);
+                        const newTasks = [...tasks];
+                        newTasks[i].最終期日 = toDateStr(new Date(year, month - 1, day), hour, e.target.value);
+                        const err = validateTask(newTasks[i], newTasks, i);
+                        if (err) {
+                          setListError(err);
+                          setListErrorOpen(true);
+                          return;
+                        }
+                        setTasks(newTasks);
+                        setUnsaved(true);
+                      }}
+                      className="border p-1"
+                      disabled={!getDateParts(task.最終期日).hour}
+                    >
+                      <option value="">--</option>
+                      {minutes.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </div>
+                </div>
               </li>
             ))}
           </ul>
@@ -493,7 +783,7 @@ export default function App() {
                         <option key={d} value={d}>{d}</option>
                       ))}
                     </select>
-                    <span className="mx-16"></span>
+                    <span className="mx-4"></span>
                     <select
                       value={getDateParts(newTask.最終期日).hour}
                       onChange={e => {
@@ -576,6 +866,26 @@ export default function App() {
                   className="px-2 py-1 bg-blue-500 text-white"
                 >追加</button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* エラーポップアップ */}
+        {listErrorOpen && (
+          <div
+            className="fixed inset-0 flex items-center justify-center z-50"
+            style={{ background: "rgba(0,0,0,0.2)" }}
+            onClick={() => setListErrorOpen(false)}
+          >
+            <div
+              className="bg-white border border-red-400 text-red-600 px-6 py-4 rounded shadow-lg"
+              onClick={e => e.stopPropagation()}
+            >
+              <b>入力エラー:</b>
+              <div>{listError}</div>
+              <button className="mt-2 px-4 py-1 bg-red-500 text-white rounded" onClick={() => setListErrorOpen(false)}>
+                閉じる
+              </button>
             </div>
           </div>
         )}
