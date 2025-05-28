@@ -46,6 +46,11 @@ export default function App() {
   const today = new Date();
   const [calendarOpen, setCalendarOpen] = useState({ 仮期日: false, 最終期日: false });
 
+  // ログイン・分類選択用ステート
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [showCategoryModal, setShowCategoryModal] = useState(true);
+  const [categoryInput, setCategoryInput] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("");
   // エラーポップアップ用ステート
   const [listError, setListError] = useState("");
   const [listErrorOpen, setListErrorOpen] = useState(false);
@@ -207,7 +212,65 @@ export default function App() {
 
   return (
     <div style={DEFAULT_POSITION}>
-      <div className="p-2">
+      {/* ログイン・分類選択モーダル */}
+      {showCategoryModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded shadow w-96" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg mb-4">分類を選択してください</h2>
+            <div className="mb-2">
+              <label className="block mb-1">新しい分類名を入力:</label>
+              <input
+                type="text"
+                className="w-full border p-1 mb-2"
+                value={categoryInput}
+                onChange={e => {
+                  setCategoryInput(e.target.value);
+                  setSelectedCategory("");
+                }}
+                placeholder="例: 仕事, プライベート など"
+              />
+            </div>
+            <div className="mb-2">
+              <label className="block mb-1">既存の分類から選択:</label>
+              <select
+                className="w-full border p-1"
+                value={selectedCategory}
+                onChange={e => {
+                  setSelectedCategory(e.target.value);
+                  setCategoryInput("");
+                }}
+              >
+                <option value="">-- 選択しない --</option>
+                {Array.from(new Set(["未指定", ...tasks.map(t => t.分類)])).map((name) => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex justify-end space-x-2 mt-4">
+              <button
+                className="px-3 py-1 border rounded"
+                onClick={() => {
+                  // 入力値優先、なければ選択値、どちらもなければ未指定
+                  let cat = categoryInput.trim();
+                  if (cat) {
+                    setTab(cat);
+                  } else if (selectedCategory && selectedCategory.trim()) {
+                    setTab(selectedCategory);
+                  } else {
+                    setTab("未指定");
+                  }
+                  setShowCategoryModal(false);
+                  setIsLoggedIn(true);
+                }}
+              >
+                決定
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* メイン画面 */}
+      <div className="p-2" style={{ filter: showCategoryModal ? "blur(2px)" : "none" }}>
         <div className="flex justify-between items-center mb-2">
           <div className="flex space-x-2 overflow-x-auto">
             {tabs.map((name) => (
