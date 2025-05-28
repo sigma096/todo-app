@@ -28,9 +28,58 @@ const hours = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, "0")
 const minutes = Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, "0"));
 
 export default function App() {
+  // 分類リストをuseStateで管理
+  const [categories, setCategories] = useState(["未仕分け"]);
   const [tasks, setTasks] = useState([]);
   const [deletedTasks, setDeletedTasks] = useState([]);
+  // 削除モーダル用: 複数選択
+  const [selectedDeleteTasks, setSelectedDeleteTasks] = useState([]);
   const [tab, setTab] = useState("未仕分け");
+  const [editingCategory, setEditingCategory] = useState(null);
+  const [editingCategoryName, setEditingCategoryName] = useState("");
+
+  // タブ削除時の確認用
+  const [showAddCategoryModal, setShowAddCategoryModal] = useState(false);
+  const [showDeleteCategoryModal, setShowDeleteCategoryModal] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [deleteCategoryName, setDeleteCategoryName] = useState("");
+  const [categoryMessage, setCategoryMessage] = useState("");
+  const [deleteCategoryMessage, setDeleteCategoryMessage] = useState("");
+
+  // タブ削除時、該当分類のタスクを未仕分けに移動
+  const handleDeleteCategory = () => {
+    if (!deleteCategoryName || deleteCategoryName === "未仕分け") {
+      setDeleteCategoryMessage("削除する分類を選択してください。");
+      return;
+    }
+    setTasks(tasks.map(t =>
+      t.分類 === deleteCategoryName ? { ...t, 分類: "未仕分け" } : t
+    ));
+    setCategories(categories.filter(c => c !== deleteCategoryName));
+    if (tab === deleteCategoryName) setTab("未仕分け");
+    setShowDeleteCategoryModal(false);
+    setDeleteCategoryName("");
+    setDeleteCategoryMessage("");
+  };
+
+  // 分類名ダブルクリック編集
+  const handleCategoryEdit = (oldName) => {
+    setEditingCategory(oldName);
+    setEditingCategoryName(oldName);
+  };
+  const handleCategoryEditSubmit = (oldName) => {
+    const newName = editingCategoryName.trim();
+    if (!newName || categories.includes(newName)) {
+      setEditingCategory(null);
+      setEditingCategoryName("");
+      return;
+    }
+    setCategories(categories.map(c => (c === oldName ? newName : c)));
+    setTasks(tasks.map(t => t.分類 === oldName ? { ...t, 分類: newName } : t));
+    if (tab === oldName) setTab(newName);
+    setEditingCategory(null);
+    setEditingCategoryName("");
+  };
   const [filterStatus, setFilterStatus] = useState("未クリア");
   const [showModal, setShowModal] = useState(false);
   const [newTask, setNewTask] = useState({
@@ -41,6 +90,13 @@ export default function App() {
     分類: "未仕分け",
     完了: false,
   });
+  // タスク追加モーダルを開くたびに現在のタブをデフォルト分類に
+  useEffect(() => {
+    if (showModal) {
+      setNewTask((prev) => ({ ...prev, 分類: tab }));
+    }
+    // eslint-disable-next-line
+  }, [showModal]);
   const [unsaved, setUnsaved] = useState(false);
   const [error, setError] = useState("");
   const today = new Date();
@@ -61,6 +117,7 @@ export default function App() {
   const [listError, setListError] = useState("");
   const [listErrorOpen, setListErrorOpen] = useState(false);
   const [calendarOpenList, setCalendarOpenList] = useState({}); // {仮期日0: true, 最終期日1: true ...}
+  const [showDeleteCategoryWarning, setShowDeleteCategoryWarning] = useState(false);
 
   // タスクのバリデーション
   const validateTask = (task, tasks, idx) => {
@@ -106,27 +163,31 @@ export default function App() {
         const wb = XLSX.read(bytes, { type: "array" });
         const ws1 = wb.Sheets["タスク"];
         const ws2 = wb.Sheets["削除済み"];
+        const ws3 = wb.Sheets["分類"]; // 追加
         const loadedTasks = ws1 ? XLSX.utils.sheet_to_json(ws1) : [];
         const loadedDeleted = ws2 ? XLSX.utils.sheet_to_json(ws2) : [];
+        const loadedCategories = ws3 ? XLSX.utils.sheet_to_json(ws3).map(row => row.分類) : ["未仕分け"]; // 追加
         setTasks(Array.isArray(loadedTasks) ? loadedTasks : []);
         setDeletedTasks(Array.isArray(loadedDeleted) ? loadedDeleted : []);
+        setCategories(Array.isArray(loadedCategories) && loadedCategories.length > 0 ? loadedCategories : ["未仕分け"]); // 追加
       } catch {}
     }
   }, []);
 
   // tasks, deletedTasksが変わったら自動保存（xlsxをbase64でlocalStorageに保存）
   useEffect(() => {
-    if (tasks.length === 0 && deletedTasks.length === 0) return;
+    if (tasks.length === 0 && deletedTasks.length === 0 && categories.length === 1) return;
     const wb = XLSX.utils.book_new();
     const ws1 = XLSX.utils.json_to_sheet(tasks);
     const ws2 = XLSX.utils.json_to_sheet(deletedTasks);
+    const ws3 = XLSX.utils.json_to_sheet(categories.map(c => ({ 分類: c }))); // 追加
     XLSX.utils.book_append_sheet(wb, ws1, "タスク");
     XLSX.utils.book_append_sheet(wb, ws2, "削除済み");
+    XLSX.utils.book_append_sheet(wb, ws3, "分類"); // 追加
     const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-    // base64エンコードしてlocalStorageに保存
     const b64 = btoa(String.fromCharCode(...new Uint8Array(wbout)));
     localStorage.setItem(XLSX_STORAGE_KEY, b64);
-  }, [tasks, deletedTasks]);
+  }, [tasks, deletedTasks, categories]);
 
   useEffect(() => {
     const handleBeforeUnload = (e) => {
@@ -174,8 +235,10 @@ export default function App() {
 
   // タスク追加時にidを付与
   const handleAddTask = () => {
-    if (!newTask.件名.trim()) return;
-    const now = new Date();
+    const errors = [];
+    if (!newTask.件名.trim()) errors.push("件名が未入力です");
+    // 分類が空欄やスペースのみの場合は「未仕分け」
+    let taskCategory = newTask.分類 && newTask.分類.trim() ? newTask.分類.trim() : "未仕分け";
     const getDateObj = (str) => {
       if (!str) return null;
       const [date, time] = str.split("T");
@@ -187,21 +250,27 @@ export default function App() {
     const 仮 = getDateObj(newTask.仮期日);
     const 最終 = getDateObj(newTask.最終期日);
     if (仮 && 仮 < new Date(today.getFullYear(), today.getMonth(), today.getDate())) {
-      setError("仮期日は本日以降の日付を指定してください。");
-      return;
+      errors.push("仮期日は本日以降の日付を指定してください。");
     }
     if (最終 && 最終 < new Date(today.getFullYear(), today.getMonth(), today.getDate())) {
-      setError("最終期日は本日以降の日付を指定してください。");
-      return;
+      errors.push("最終期日は本日以降の日付を指定してください。");
     }
     if (仮 && 最終 && 仮 > 最終) {
-      setError("仮期日は最終期日より前に設定してください。");
+      errors.push("仮期日は最終期日より前に設定してください。");
+    }
+    if (errors.length > 0) {
+      setError(errors);
       return;
+    }
+    // 分類が新規なら即時追加
+    if (taskCategory && !categories.includes(taskCategory)) {
+      setCategories(prev => [...prev, taskCategory]);
     }
     setTasks((prev) => [
       ...prev,
       {
         ...newTask,
+        分類: taskCategory,
         id: Date.now().toString(36) + Math.random().toString(36).slice(2),
       }
     ]);
@@ -218,9 +287,7 @@ export default function App() {
     setError("");
   };
 
-  // Excelエクスポート関数は不要になったため削除
-
-  const tabs = Array.from(new Set(["未仕分け", ...tasks.map(t => t.分類)]));
+  const tabs = categories;
   const filtered = tasks.filter((t) => t.分類 === tab && t.完了 === (filterStatus === "クリア"));
   const sorted = filtered.sort((a, b) => {
     const pOrder = { 高: 0, 未指定: 1, 低: 2 };
@@ -271,26 +338,32 @@ export default function App() {
                 }}
               >
                 <option value="">-- 選択しない --</option>
-                {Array.from(new Set(["未指定", ...tasks.map(t => t.分類)])).map((name) => (
+                {categories.map((name) => (
                   <option key={name} value={name}>{name}</option>
                 ))}
               </select>
             </div>
             <div className="flex justify-end space-x-2 mt-4">
+              {/* 決定ボタン */}
               <button
                 className="px-3 py-1 border rounded"
                 onClick={() => {
-                  // 入力値優先、なければ選択値、どちらもなければ未指定
                   let cat = categoryInput.trim();
                   if (cat) {
+                    // 新しい分類なら追加
+                    if (!categories.includes(cat)) {
+                      setCategories(prev => [...prev, cat]);
+                    }
                     setTab(cat);
                   } else if (selectedCategory && selectedCategory.trim()) {
                     setTab(selectedCategory);
                   } else {
-                    setTab("未指定");
+                    setTab("未仕分け");
                   }
                   setShowCategoryModal(false);
                   setIsLoggedIn(true);
+                  setCategoryInput("");
+                  setSelectedCategory("");
                 }}
               >
                 決定
@@ -299,13 +372,139 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* --- ここから追加 --- */}
+      {/* 分類追加モーダル */}
+      {showAddCategoryModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded shadow w-96" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg mb-4">新規分類名を入力</h2>
+            <input
+              type="text"
+              className="w-full border p-1 mb-2"
+              value={newCategoryName}
+              onChange={e => setNewCategoryName(e.target.value)}
+              placeholder="新しい分類名"
+            />
+            {categoryMessage && (
+              <div className="mb-2 text-red-600 text-sm">{categoryMessage}</div>
+            )}
+            <div className="flex justify-end space-x-2 mt-4">
+              <button
+                className="px-3 py-1 border rounded"
+                onClick={() => {
+                  if (!newCategoryName.trim()) {
+                    setCategoryMessage("分類名を入力してください。");
+                    return;
+                  }
+                  if (categories.includes(newCategoryName.trim())) {
+                    setCategoryMessage("既に存在する分類名です。");
+                    return;
+                  }
+                  const newCat = newCategoryName.trim();
+                  setCategories(prev => [...prev, newCat]);
+                  setTab(newCat);
+                  setShowAddCategoryModal(false);
+                  setNewCategoryName("");
+                  setCategoryMessage("");
+                }}
+              >追加</button>
+              <button
+                className="px-3 py-1 border rounded"
+                onClick={() => {
+                  setShowAddCategoryModal(false);
+                  setNewCategoryName("");
+                  setCategoryMessage("");
+                }}
+              >キャンセル</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 分類削除モーダル */}
+      {showDeleteCategoryModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded shadow w-96" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg mb-4">分類を削除</h2>
+            <select
+              className="w-full border p-1 mb-2"
+              value={deleteCategoryName}
+              onChange={e => setDeleteCategoryName(e.target.value)}
+            >
+              <option value="">-- 選択してください --</option>
+              {categories.filter(t => t !== "未仕分け" && t !== "削除済み").map((name) => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+            {deleteCategoryMessage && (
+              <div className="mb-2 text-red-600 text-sm">{deleteCategoryMessage}</div>
+            )}
+            <div className="flex justify-end space-x-2 mt-4">
+              <button
+                className="px-3 py-1 border rounded bg-red-400 text-white"
+                onClick={() => {
+                  if (!deleteCategoryName) {
+                    setDeleteCategoryMessage("削除する分類を選択してください。");
+                    return;
+                  }
+                  setCategories(prev => prev.filter(cat => cat !== deleteCategoryName));
+                  setTasks(tasks.map(t => t.分類 === deleteCategoryName ? { ...t, 分類: "未仕分け" } : t));
+                  setTab("未仕分け");
+                  setShowDeleteCategoryModal(false);
+                  setDeleteCategoryName("");
+                  setDeleteCategoryMessage("分類を削除しました。");
+                  setTimeout(() => setDeleteCategoryMessage(""), 1500);
+                }}
+              >削除</button>
+              <button
+                className="px-3 py-1 border rounded"
+                onClick={() => {
+                  setShowDeleteCategoryModal(false);
+                  setDeleteCategoryName("");
+                  setDeleteCategoryMessage("");
+                }}
+              >キャンセル</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* --- ここまで追加 --- */}
+
       {/* メイン画面 */}
       <div className="p-2" style={{ filter: showCategoryModal ? "blur(2px)" : "none" }}>
         <div className="flex justify-between items-center mb-2">
           <div className="flex space-x-2 overflow-x-auto">
-            {tabs.map((name) => (
-              <button key={name} className={`px-2 py-1 border rounded ${tab === name ? "bg-blue-300" : "bg-white"}`} onClick={() => setTab(name)}>{name}</button>
+            {categories.map((name) => (
+              <button
+                key={name}
+                className={`px-2 py-1 border rounded ${tab === name ? "bg-blue-300" : "bg-white"}`}
+                onClick={() => setTab(name)}
+              >
+                {name}
+                <span className="ml-1 text-xs text-gray-500">
+                  （{tasks.filter(t => t.分類 === name).length}）
+                </span>
+              </button>
             ))}
+            {/* +タブ */}
+            <button
+              className="px-2 py-1 border rounded bg-green-200"
+              onClick={() => setShowAddCategoryModal(true)} // 追加モーダルを表示
+            >＋</button>
+            {/* -タブ */}
+            <button
+              className="px-2 py-1 border rounded bg-red-200"
+              onClick={() => {
+                if (tab === "未仕分け" || tab === "削除済み") return;
+                if (tasks.some(t => t.分類 === tab)) {
+                  setShowDeleteCategoryWarning(true); // 警告モーダルを表示
+                } else {
+                  setCategories(categories.filter(c => c !== tab));
+                  setTab("未仕分け");
+                }
+              }}
+            >－</button>
             <button className="px-2 py-1 border rounded" onClick={() => setTab("削除済み")}>削除済み</button>
           </div>
           <button className="text-red-500 text-xl" onClick={() => {
@@ -324,7 +523,16 @@ export default function App() {
 
         <div className="flex justify-between mb-2">
           <div className="flex space-x-2">
-            <button onClick={() => setShowModal(true)} className="px-2 py-1 bg-green-500 text-white rounded">＋追加</button>
+            <button
+              onClick={() => {
+                setNewTask((prev) => ({
+                  ...prev,
+                  分類: tab // 現在のタブ名を分類にセット
+                }));
+                setShowModal(true);
+              }}
+              className="px-2 py-1 bg-green-500 text-white rounded"
+            >＋追加</button>
             <button
               className="px-2 py-1 bg-blue-500 text-white rounded"
               onClick={() => {
@@ -390,14 +598,46 @@ export default function App() {
 
         {tab === "削除済み" ? (
           <ul className="text-sm border rounded p-2 bg-gray-100">
+            <li className="flex font-bold border-b pb-1 mb-1">
+              <span className="w-32 flex-shrink-0 text-center border-r">件名</span>
+              <span className="w-20 flex-shrink-0 text-center border-r">分類</span>
+              <span className="w-16 flex-shrink-0 text-center border-r">優先度</span>
+              <span className="w-40 flex-shrink-0 text-center border-r">仮期日</span>
+              <span className="w-40 flex-shrink-0 text-center border-r">最終期日</span>
+              <span className="w-20 flex-shrink-0 text-center">操作</span>
+            </li>
             {deletedTasks.map((task, i) => (
-              <li key={i}>{task.件名}（削除済）</li>
+              <li key={i} className="flex items-center border-b last:border-b-0">
+                <span className="w-32 flex-shrink-0 text-center border-r">{task.件名}</span>
+                <span className="w-20 flex-shrink-0 text-center border-r">{task.分類}</span>
+                <span className="w-16 flex-shrink-0 text-center border-r">{task.緊急度}</span>
+                <span className="w-40 flex-shrink-0 text-center border-r">{task.仮期日 ? task.仮期日.replace("T", " ") : ""}</span>
+                <span className="w-40 flex-shrink-0 text-center border-r">{task.最終期日 ? task.最終期日.replace("T", " ") : ""}</span>
+                <span className="w-20 flex-shrink-0 text-center">
+                  {/* ここに「元に戻す」ボタンを追加 */}
+                  <button
+                    className="px-2 py-1 border rounded bg-blue-200"
+                    onClick={() => {
+                      // 元の分類がなければ作成
+                      if (!categories.includes(task.分類)) {
+                        setCategories(prev => [...prev, task.分類]);
+                      }
+                      setTasks(prev => [...prev, { ...task, 完了: false }]);
+                      setDeletedTasks(deletedTasks.filter((_, idx) => idx !== i));
+                      setUnsaved(true);
+                    }}
+                  >
+                    元に戻す
+                  </button>
+                </span>
+              </li>
             ))}
           </ul>
         ) : (
           <ul className="text-sm border rounded p-2 bg-white shadow-inner min-h-[100px]">
             <li className="flex font-bold border-b pb-1 mb-1">
-              <span className="w-6 flex-shrink-0 text-center border-r">✔</span>
+              <span className="w-12 flex-shrink-0 text-center border-r">クリア</span>
+              <span className="w-12 flex-shrink-0 text-center border-r">削除</span>
               <span className="w-20 flex-shrink-0 text-center border-r">緊急度</span>
               <span className="w-32 flex-shrink-0 text-center border-r">分類</span>
               <span
@@ -455,6 +695,13 @@ export default function App() {
                 );
                 const idx = tasks.findIndex(t => t.id === key);
                 const err = validateTask(newTasks[idx], newTasks, idx);
+                // 仮期日が最終期日より後の場合は赤文字警告
+                if (newDateStr && tasks[idx]?.最終期日 && getDateObj(newDateStr) && getDateObj(tasks[idx].最終期日) && getDateObj(newDateStr) > getDateObj(tasks[idx].最終期日)) {
+                  setListError("仮期日は最終期日より前に設定してください。");
+                  setListErrorOpen(false);
+                  setEditKariDates(prev => ({ ...prev, [key]: newDateStr }));
+                  return;
+                }
                 if (err) {
                   setListError(err);
                   setListErrorOpen(true);
@@ -485,8 +732,8 @@ export default function App() {
 
               return (
                 <li key={key} className="flex items-center border-b last:border-b-0">
-                  {/* チェックボックス */}
-                  <span className="w-6 flex-shrink-0 text-center border-r">
+                  {/* クリア（チェックボックス） */}
+                  <span className="w-12 flex-shrink-0 text-center border-r">
                     <input
                       type="checkbox"
                       checked={task.完了}
@@ -497,6 +744,19 @@ export default function App() {
                       }}
                       className="w-4 h-4"
                     />
+                  </span>
+                  {/* 削除ボタン */}
+                  <span className="w-12 flex-shrink-0 text-center border-r">
+                    <button
+                      className="px-2 py-1 border rounded bg-red-200"
+                      onClick={() => {
+                        setDeletedTasks(prev => [...prev, task]);
+                        setTasks(tasks.filter(t => t.id !== task.id));
+                        setUnsaved(true);
+                      }}
+                    >
+                      削除
+                    </button>
                   </span>
                   {/* 緊急度 */}
                   <span className="w-20 flex-shrink-0 text-center border-r">
@@ -706,7 +966,7 @@ export default function App() {
                             <option key={d} value={d}>{d}</option>
                           ))}
                         </select>
-                        <span className="mx-2"></span>
+                        <span className="mx-4"></span>
                         <select
                           value={getDateParts(task.最終期日).hour}
                           onChange={e => {
@@ -761,8 +1021,14 @@ export default function App() {
                 className="w-full border mb-2 p-1"
               />
 
-              {/* エラー表示 */}
-              {error && <p className="text-red-600 text-sm mb-1">{error}</p>}
+              {/* エラー表示（複数） */}
+              {Array.isArray(error) && error.length > 0 ? (
+                <div className="text-red-600 text-sm mb-1">
+                  {error.map((err, idx) => <div key={idx}>・{err}</div>)}
+                </div>
+              ) : error ? (
+                <p className="text-red-600 text-sm mb-1">{error}</p>
+              ) : null}
 
               {/* 仮期日入力 */}
               <label className="block mb-1">仮期日:
@@ -1001,10 +1267,21 @@ export default function App() {
                 </select>
               </label>
               <label className="block mb-2">分類:
-                <input value={newTask.分類} onChange={(e) => setNewTask({ ...newTask, 分類: e.target.value })} className="w-full border p-1" list="分類候補" />
-                <datalist id="分類候補">
-                  {tabs.map((t) => <option key={t} value={t} />)}
-                </datalist>
+                <input
+                  value={newTask.分類}
+                  onChange={(e) => setNewTask({ ...newTask, 分類: e.target.value })}
+                  className="border p-1 flex-1"
+                  placeholder="分類名を入力"
+                  autoComplete="off"
+                />
+                <select
+                  className="border p-1"
+                  value={categories.length > 0 && categories.includes(newTask.分類) ? newTask.分類 : ""}
+                  onChange={e => setNewTask({ ...newTask, 分類: e.target.value })}
+                >
+                  <option value="">分類を選択</option>
+                  {categories.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
               </label>
               <div className="flex justify-end space-x-2">
                 <button onClick={() => setShowModal(false)} className="px-2 py-1 border">キャンセル</button>
@@ -1045,6 +1322,10 @@ export default function App() {
         )}
 
         {/* エラーポップアップ */}
+        {/* 仮期日が最終期日より後の場合はリスト下部に赤文字警告 */}
+        {listError && !listErrorOpen && (
+          <div className="text-red-600 text-sm mb-2">{listError}</div>
+        )}
         {listErrorOpen && (
           <div
             className="fixed inset-0 flex items-center justify-center z-50"
@@ -1060,6 +1341,38 @@ export default function App() {
               <button className="mt-2 px-4 py-1 bg-red-500 text-white rounded" onClick={() => setListErrorOpen(false)}>
                 閉じる
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* 分類削除警告モーダル */}
+        {showDeleteCategoryWarning && (
+          <div
+            className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50"
+            onClick={() => setShowDeleteCategoryWarning(false)} // モーダル外クリックでキャンセル
+          >
+            <div
+              className="bg-white p-6 rounded shadow w-96"
+              onClick={e => e.stopPropagation()} // モーダル内クリックは伝播防止
+            >
+              <h2 className="text-lg mb-4 text-red-600">この分類にはタスクが残っています</h2>
+              <p className="mb-4">本当にこの分類を削除しますか？<br />（分類内のタスクは「未仕分け」に移動します）</p>
+              <div className="flex justify-end space-x-2 mt-4">
+                <button
+                  className="px-3 py-1 border rounded bg-red-400 text-white"
+                  onClick={() => {
+                    // 選択中の分類(tab)を削除
+                    setCategories(prev => prev.filter(cat => cat !== tab));
+                    setTasks(tasks.map(t => t.分類 === tab ? { ...t, 分類: "未仕分け" } : t));
+                    setTab("未仕分け");
+                    setShowDeleteCategoryWarning(false);
+                  }}
+                >削除</button>
+                <button
+                  className="px-3 py-1 border rounded"
+                  onClick={() => setShowDeleteCategoryWarning(false)}
+                >キャンセル</button>
+              </div>
             </div>
           </div>
         )}
@@ -1089,3 +1402,8 @@ function toDateStr(date, hour, minute) {
   }
   return `${y}-${m}-${d}`;
 }
+
+// 1. setTabの無限ループ部分を削除
+// {showCategoryModal === false && tab && (
+//   <div style={{ display: "none" }}>{setTab(tab)}</div>
+// )}
