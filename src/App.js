@@ -46,6 +46,12 @@ export default function App() {
   const today = new Date();
   const [calendarOpen, setCalendarOpen] = useState({ 仮期日: false, 最終期日: false });
 
+  // xlsxデータ読込用
+  const fileInputRef = React.useRef();
+
+  // xlsx base64保存用キー
+  const XLSX_STORAGE_KEY = "todo-app-xlsx-base64";
+
   // ログイン・分類選択用ステート
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(true);
@@ -88,6 +94,39 @@ export default function App() {
       setTasks(updatedTasks);
     }
   }, [tasks]);
+
+  // 初回マウント時: localStorageのxlsxデータを読み込む
+  useEffect(() => {
+    const base64 = localStorage.getItem(XLSX_STORAGE_KEY);
+    if (base64) {
+      try {
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        const wb = XLSX.read(bytes, { type: "array" });
+        const ws1 = wb.Sheets["タスク"];
+        const ws2 = wb.Sheets["削除済み"];
+        const loadedTasks = ws1 ? XLSX.utils.sheet_to_json(ws1) : [];
+        const loadedDeleted = ws2 ? XLSX.utils.sheet_to_json(ws2) : [];
+        setTasks(Array.isArray(loadedTasks) ? loadedTasks : []);
+        setDeletedTasks(Array.isArray(loadedDeleted) ? loadedDeleted : []);
+      } catch {}
+    }
+  }, []);
+
+  // tasks, deletedTasksが変わったら自動保存（xlsxをbase64でlocalStorageに保存）
+  useEffect(() => {
+    if (tasks.length === 0 && deletedTasks.length === 0) return;
+    const wb = XLSX.utils.book_new();
+    const ws1 = XLSX.utils.json_to_sheet(tasks);
+    const ws2 = XLSX.utils.json_to_sheet(deletedTasks);
+    XLSX.utils.book_append_sheet(wb, ws1, "タスク");
+    XLSX.utils.book_append_sheet(wb, ws2, "削除済み");
+    const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+    // base64エンコードしてlocalStorageに保存
+    const b64 = btoa(String.fromCharCode(...new Uint8Array(wbout)));
+    localStorage.setItem(XLSX_STORAGE_KEY, b64);
+  }, [tasks, deletedTasks]);
 
   useEffect(() => {
     const handleBeforeUnload = (e) => {
@@ -179,16 +218,7 @@ export default function App() {
     setError("");
   };
 
-  const exportToExcel = () => {
-    const wb = XLSX.utils.book_new();
-    const ws1 = XLSX.utils.json_to_sheet(tasks);
-    const ws2 = XLSX.utils.json_to_sheet(deletedTasks);
-    XLSX.utils.book_append_sheet(wb, ws1, "タスク");
-    XLSX.utils.book_append_sheet(wb, ws2, "削除済み");
-    const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-    saveAs(new Blob([wbout], { type: "application/octet-stream" }), "tasks.xlsx");
-    setUnsaved(false);
-  };
+  // Excelエクスポート関数は不要になったため削除
 
   const tabs = Array.from(new Set(["未仕分け", ...tasks.map(t => t.分類)]));
   const filtered = tasks.filter((t) => t.分類 === tab && t.完了 === (filterStatus === "クリア"));
@@ -293,8 +323,69 @@ export default function App() {
         )}
 
         <div className="flex justify-between mb-2">
-          <button onClick={() => setShowModal(true)} className="px-2 py-1 bg-green-500 text-white rounded">＋追加</button>
-          <button onClick={exportToExcel} className="px-2 py-1 bg-gray-500 text-white rounded">保存</button>
+          <div className="flex space-x-2">
+            <button onClick={() => setShowModal(true)} className="px-2 py-1 bg-green-500 text-white rounded">＋追加</button>
+            <button
+              className="px-2 py-1 bg-blue-500 text-white rounded"
+              onClick={() => {
+                const wb = XLSX.utils.book_new();
+                const ws1 = XLSX.utils.json_to_sheet(tasks);
+                const ws2 = XLSX.utils.json_to_sheet(deletedTasks);
+                XLSX.utils.book_append_sheet(wb, ws1, "タスク");
+                XLSX.utils.book_append_sheet(wb, ws2, "削除済み");
+                const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+                // base64エンコードしてlocalStorageに保存
+                const b64 = btoa(String.fromCharCode(...new Uint8Array(wbout)));
+                localStorage.setItem(XLSX_STORAGE_KEY, b64);
+                alert("データをローカルストレージに保存しました。");
+              }}
+            >保存</button>
+            <button
+              className="px-2 py-1 bg-green-500 text-white rounded"
+              onClick={() => {
+                const base64 = localStorage.getItem(XLSX_STORAGE_KEY);
+                if (!base64) {
+                  alert("保存データがありません。");
+                  return;
+                }
+                const binary = atob(base64);
+                const bytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                saveAs(new Blob([bytes], { type: "application/octet-stream" }), "todo-app-data.xlsx");
+              }}
+            >ダウンロード</button>
+            <button
+              className="px-2 py-1 bg-yellow-500 text-white rounded"
+              onClick={() => fileInputRef.current && fileInputRef.current.click()}
+            >読込</button>
+            <input
+              type="file"
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              style={{ display: "none" }}
+              ref={fileInputRef}
+              onChange={e => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = evt => {
+                  try {
+                    const data = new Uint8Array(evt.target.result);
+                    const wb = XLSX.read(data, { type: "array" });
+                    const ws1 = wb.Sheets["タスク"];
+                    const ws2 = wb.Sheets["削除済み"];
+                    const loadedTasks = ws1 ? XLSX.utils.sheet_to_json(ws1) : [];
+                    const loadedDeleted = ws2 ? XLSX.utils.sheet_to_json(ws2) : [];
+                    setTasks(Array.isArray(loadedTasks) ? loadedTasks : []);
+                    setDeletedTasks(Array.isArray(loadedDeleted) ? loadedDeleted : []);
+                  } catch {
+                    alert("ファイルの読み込みに失敗しました。");
+                  }
+                };
+                reader.readAsArrayBuffer(file);
+                e.target.value = "";
+              }}
+            />
+          </div>
         </div>
 
         {tab === "削除済み" ? (
