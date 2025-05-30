@@ -1,5 +1,6 @@
 import React from "react";
 import DatePicker from "react-datepicker";
+import TaskError from "./TaskError";
 
 export default function TaskModal({
   showModal,
@@ -35,13 +36,7 @@ export default function TaskModal({
           onChange={e => setNewTask({ ...newTask, 件名: e.target.value })}
           className="w-full border mb-2 p-1"
         />
-        {Array.isArray(error) && error.length > 0 ? (
-          <div className="text-red-600 text-sm mb-1">
-            {error.map((err, idx) => <div key={idx}>・{err}</div>)}
-          </div>
-        ) : error ? (
-          <p className="text-red-600 text-sm mb-1">{error}</p>
-        ) : null}
+        <TaskError error={error} />
         {/* 仮期日入力 */}
         <label className="block mb-1">仮期日:
           <div className="flex items-center space-x-2">

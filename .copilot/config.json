@@ -1,0 +1,6 @@
+{
+  "context": {
+    "include": ["src/**", "components/**"],
+    "exclude": ["node_modules/**", "dist/**"]
+  }
+}
