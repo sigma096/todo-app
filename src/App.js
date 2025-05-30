@@ -7,6 +7,7 @@ import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
+import TaskError from "./TaskError";
 
 const PRIORITY_COLORS = {
   高: "text-red-600",
@@ -1018,6 +1019,7 @@ export default function App() {
         )}
 
 
+        {/* タスク追加モーダル内 */}
         {showModal && (
           <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center" onClick={() => setShowModal(false)}>
             <div className="bg-white p-4 rounded shadow w-96" onClick={e => e.stopPropagation()}>
@@ -1034,12 +1036,26 @@ export default function App() {
 
               {/* エラー表示（複数） */}
               {Array.isArray(error) && error.length > 0 ? (
-                <div className="text-red-600 text-sm mb-1">
-                  {error.map((err, idx) => <div key={idx}>・{err}</div>)}
+                <div className="mb-2 text-red-600 text-sm">
+                  {error.map((err, idx) => (
+                    <div key={idx}>{err}</div>
+                  ))}
                 </div>
-              ) : error ? (
-                <p className="text-red-600 text-sm mb-1">{error}</p>
               ) : null}
+              {listError && !listErrorOpen && (
+                <div className="mb-2 text-red-600 text-sm">{listError}</div>
+              )}
+              {listErrorOpen && (
+                <div className="mb-2 text-red-600 text-sm">
+                  {listError}
+                  <button
+                    onClick={() => setListErrorOpen(false)}
+                    className="ml-2 text-blue-600"
+                  >
+                    閉じる
+                  </button>
+                </div>
+              )}
 
               {/* 仮期日入力 */}
               <label className="block mb-1">仮期日:
@@ -1334,27 +1350,11 @@ export default function App() {
 
         {/* エラーポップアップ */}
         {/* 仮期日が最終期日より後の場合はリスト下部に赤文字警告 */}
-        {listError && !listErrorOpen && (
-          <div className="text-red-600 text-sm mb-2">{listError}</div>
-        )}
-        {listErrorOpen && (
-          <div
-            className="fixed inset-0 flex items-center justify-center z-50"
-            style={{ background: "rgba(0,0,0,0.2)" }}
-            onClick={() => setListErrorOpen(false)}
-          >
-            <div
-              className="bg-white border border-red-400 text-red-600 px-6 py-4 rounded shadow-lg"
-              onClick={e => e.stopPropagation()}
-            >
-              <b>入力エラー:</b>
-              <div>{listError}</div>
-              <button className="mt-2 px-4 py-1 bg-red-500 text-white rounded" onClick={() => setListErrorOpen(false)}>
-                閉じる
-              </button>
-            </div>
-          </div>
-        )}
+        <TaskError
+          listError={listError}
+          listErrorOpen={listErrorOpen}
+          setListErrorOpen={setListErrorOpen}
+        />
 
         {/* 分類削除警告モーダル */}
         {showDeleteCategoryWarning && (
