@@ -516,8 +516,8 @@ export default function App() {
 
         {tab !== "削除済み" && (
           <div className="flex space-x-2 mb-2">
-            <button className={filterStatus === "未クリア" ? "underline" : ""} onClick={() => setFilterStatus("未クリア")}>未クリア</button>
-            <button className={filterStatus === "クリア" ? "underline" : ""} onClick={() => setFilterStatus("クリア")}>クリア</button>
+            <button className={filterStatus === "未クリア" ? "underline" : ""} onClick={() => setFilterStatus("未クリア")}>未完了</button>
+            <button className={filterStatus === "クリア" ? "underline" : ""} onClick={() => setFilterStatus("クリア")}>完了</button>
           </div>
         )}
 
@@ -634,18 +634,18 @@ export default function App() {
             ))}
           </ul>
         ) : (
-          <ul className="text-sm border rounded p-2 bg-white shadow-inner min-h-[100px]">
-            <li className="flex font-bold border-b pb-1 mb-1">
-              <span className="w-12 flex-shrink-0 text-center border-r">クリア</span>
-              <span className="w-12 flex-shrink-0 text-center border-r">削除</span>
-              <span className="w-20 flex-shrink-0 text-center border-r">緊急度</span>
-              <span className="w-32 flex-shrink-0 text-center border-r">分類</span>
+          <ul className="text-sm border-2 rounded p-2 bg-white shadow-inner min-h-[100px]">
+            <li className="flex font-bold border-b-2 pb-1 mb-1">
+              <span className="w-14 flex-shrink-0 text-center border-r-2">完了</span>
+              <span className="w-20 flex-shrink-0 text-center border-r-2">優先度</span>
+              <span className="w-32 flex-shrink-0 text-center border-r-2">分類</span>
               <span
-                className="border-r text-center"
+                className="border-r-2 text-center"
                 style={{ minWidth: "120px", width: titleColWidth, maxWidth: "40ch", flexShrink: 0 }}
               >件名</span>
-              <span className="w-64 flex-shrink-0 text-center border-r">仮期日</span>
-              <span className="w-64 flex-shrink-0 text-center">最終期日</span>
+              <span className="text-center border-r-2 px-2" style={{ minWidth: "110px" }}>仮期日</span>
+              <span className="text-center border-r-2 px-2" style={{ minWidth: "110px" }}>最終期日</span>
+              <span className="w-14 flex-shrink-0 text-center">削除</span>
             </li>
             {sorted.map((task, i) => {
               const key = task.id;
@@ -670,7 +670,7 @@ export default function App() {
                 }
               };
 
-              // 緊急度変更
+              // 優先度変更
               const handlePriorityChange = (e) => {
                 const value = e.target.value;
                 setEditPriorities(prev => ({ ...prev, [key]: value }));
@@ -731,35 +731,39 @@ export default function App() {
               };
 
               return (
-                <li key={key} className="flex items-center border-b last:border-b-0">
-                  {/* クリア（チェックボックス） */}
-                  <span className="w-12 flex-shrink-0 text-center border-r">
-                    <input
-                      type="checkbox"
-                      checked={task.完了}
-                      onChange={() => {
-                        task.完了 = !task.完了;
-                        setTasks([...tasks]);
-                        setUnsaved(true);
-                      }}
-                      className="w-4 h-4"
-                    />
-                  </span>
-                  {/* 削除ボタン */}
-                  <span className="w-12 flex-shrink-0 text-center border-r">
+                <li
+                  key={key}
+                  className={`flex items-center border-b-2 last:border-b-0 ${
+                    (task.仮期日 && !task.完了 && (() => {
+                      const d = getDateObj(task.仮期日);
+                      if (!d) return false;
+                      // 日付部分だけで比較
+                      const todayDate = new Date();
+                      todayDate.setHours(0,0,0,0);
+                      const taskDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+                      const diff = Math.floor((taskDate - todayDate) / (1000 * 60 * 60 * 24));
+                      return diff >= 0 && diff <= 7;
+                    })()) ? "bg-red-100" : ""
+                  }`}
+                >
+                  {/* 完了ボタン */}
+                  <span className="w-14 flex-shrink-0 text-center border-r-2">
                     <button
-                      className="px-2 py-1 border rounded bg-red-200"
+                      className={`px-2 py-1 border rounded ${task.完了 ? "bg-gray-300 text-gray-500" : "bg-green-200"}`}
+                      disabled={task.完了}
                       onClick={() => {
-                        setDeletedTasks(prev => [...prev, task]);
-                        setTasks(tasks.filter(t => t.id !== task.id));
-                        setUnsaved(true);
+                        if (!task.完了) {
+                          task.完了 = true;
+                          setTasks([...tasks]);
+                          setUnsaved(true);
+                        }
                       }}
                     >
-                      削除
+                      完了
                     </button>
                   </span>
-                  {/* 緊急度 */}
-                  <span className="w-20 flex-shrink-0 text-center border-r">
+                  {/* 優先度 */}
+                  <span className="w-20 flex-shrink-0 text-center border-r-2">
                     <select
                       value={editPriority}
                       onChange={handlePriorityChange}
@@ -771,7 +775,7 @@ export default function App() {
                     </select>
                   </span>
                   {/* 分類 */}
-                  <span className="w-32 flex-shrink-0 text-center border-r">
+                  <span className="w-32 flex-shrink-0 text-center border-r-2">
                     <select
                       value={editCategory}
                       onChange={handleCategoryChange}
@@ -784,7 +788,7 @@ export default function App() {
                   </span>
                   {/* 件名 */}
                   <span
-                    className="border-r px-2"
+                    className="border-r-2 px-2"
                     style={{ minWidth: "120px", width: titleColWidth, maxWidth: "40ch", flexShrink: 0 }}
                   >
                     <input
@@ -802,7 +806,7 @@ export default function App() {
                     />
                   </span>
                   {/* 仮期日 */}
-                  <span className="w-64 flex-shrink-0 border-r px-2">
+                  <span className="text-center border-r-2 px-2" style={{ minWidth: "110px" }}>
                     <div className="flex flex-col">
                       <div className="flex items-center">
                         <button
@@ -900,7 +904,7 @@ export default function App() {
                     </div>
                   </span>
                   {/* 最終期日 */}
-                  <span className="w-64 flex-shrink-0 px-2">
+                  <span className="text-center border-r-2 px-2" style={{ minWidth: "110px" }}>
                     <div className="flex flex-col">
                       <div className="flex items-center">
                         <button
@@ -994,18 +998,25 @@ export default function App() {
                       </div>
                     </div>
                   </span>
+                  {/* 削除ボタン（右端） */}
+                  <span className="w-14 flex-shrink-0 text-center">
+                    <button
+                      className="px-2 py-1 border rounded bg-red-200"
+                      onClick={() => {
+                        setDeletedTasks(prev => [...prev, task]);
+                        setTasks(tasks.filter(t => t.id !== task.id));
+                        setUnsaved(true);
+                      }}
+                    >
+                      削除
+                    </button>
+                  </span>
                 </li>
               );
             })}
           </ul>
         )}
 
-        <div className="fixed bottom-0 left-0 right-0 bg-yellow-100 text-sm text-red-600 p-2 border-t border-yellow-400">
-          <b>通知:</b>
-          <ul>
-            {alerts.map((task, i) => <li key={i}>{task.件名} の期日が近づいています</li>)}
-          </ul>
-        </div>
 
         {showModal && (
           <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center" onClick={() => setShowModal(false)}>
